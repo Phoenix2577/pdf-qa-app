@@ -1,83 +1,79 @@
-from fastapi import FastAPI, UploadFile, Form
+import os
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import PyPDF2
-import faiss
-import numpy as np
-from openai import OpenAI
+from PyPDF2 import PdfReader
+import chromadb
+from chromadb.utils import embedding_functions
+import openai
 
+# Initialize OpenAI API key from environment
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY not set in environment variables")
+openai.api_key = OPENAI_API_KEY
+
+# Initialize Chroma client
+client = chromadb.Client()
+collection = client.create_collection("pdf_collection")
+
+# FastAPI setup
 app = FastAPI()
-client = OpenAI(api_key="YOUR_OPENAI_API_KEY")
-
-# Allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins for testing; adjust in production
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Store embeddings
-index = None
-chunks = []
-
-def pdf_to_text(file):
-    reader = PyPDF2.PdfReader(file)
+# Helper: Extract text from PDF
+def extract_text_from_pdf(file: UploadFile) -> str:
+    reader = PdfReader(file.file)
     text = ""
     for page in reader.pages:
-        text += page.extract_text() + "\n"
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + "\n"
     return text
 
-def chunk_text(text, chunk_size=500):
-    words = text.split()
-    return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
-
-def embed_texts(texts):
-    response = client.embeddings.create(
-        model="text-embedding-ada-002",
-        input=texts
-    )
-    return [np.array(d.embedding, dtype="float32") for d in response.data]
-
-@app.post("/upload-pdf/")
-async def upload_pdf(file: UploadFile):
-    global index, chunks
-    text = pdf_to_text(file.file)
-    chunks = chunk_text(text)
-
-    embeddings = embed_texts(chunks)
-    dim = len(embeddings[0])
-
-    index = faiss.IndexFlatL2(dim)
-    index.add(np.array(embeddings))
-
-    return {"message": "PDF processed successfully", "chunks": len(chunks)}
-
-class Query(BaseModel):
-    question: str
-
-@app.post("/ask/")
-async def ask(query: Query):
-    global index, chunks
-    if index is None:
-        return {"answer": "Please upload a PDF first."}
-
-    q_embed = embed_texts([query.question])[0].reshape(1, -1)
-    D, I = index.search(q_embed, 3)  # Top 3 chunks
-    retrieved = [chunks[i] for i in I[0]]
-
-    context = "\n".join(retrieved)
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant. Use the context to answer."},
-        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query.question}"}
-    ]
-
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=messages,
-        max_tokens=500,
+# Helper: Ask OpenAI using context
+def ask_openai(question: str, context: str) -> str:
+    prompt = f"Use the following context to answer the question precisely.\n\nContext:\n{context}\n\nQuestion: {question}\nAnswer:"
+    response = openai.Completion.create(
+        model="text-davinci-003",
+        prompt=prompt,
+        max_tokens=300,
         temperature=0
     )
+    return response.choices[0].text.strip()
 
-    return {"answer": response.choices[0].message.content.strip()}
+# Upload PDF and store in Chroma
+@app.post("/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    text = extract_text_from_pdf(file)
+    # Store as single document for simplicity
+    collection.add(
+        documents=[text],
+        metadatas=[{"filename": file.filename}],
+        ids=[file.filename]
+    )
+    return {"message": f"{file.filename} uploaded and indexed successfully."}
+
+# Ask a question using all indexed PDFs
+@app.post("/ask")
+async def ask_question(question: str = Form(...)):
+    # Retrieve all documents
+    docs = collection.get(include=["documents"])["documents"]
+    context = "\n".join([doc for doc in docs])
+    answer = ask_openai(question, context)
+    return {"answer": answer}
+
+# Root endpoint
+@app.get("/")
+def root():
+    return {"message": "Backend is live!"}
+
+# Run server with dynamic Render PORT
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
