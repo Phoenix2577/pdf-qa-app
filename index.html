@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Q&A with OpenAI</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+  <h2>Ask Questions from PDF</h2>
+
+  <!-- File upload -->
+  <input type="file" id="fileInput" accept="application/pdf"><br><br>
+
+  <!-- Question input -->
+  <textarea id="question" placeholder="Ask your question..." rows="3" cols="50"></textarea><br><br>
+
+  <!-- Submit -->
+  <button id="askBtn">Ask</button>
+
+  <!-- Answer output -->
+  <h3>Answer:</h3>
+  <div id="answer" style="white-space: pre-wrap; border:1px solid #ccc; padding:10px; width:500px;"></div>
+
+  <script>
+    let pdfText = ''; // store extracted PDF text
+
+    // Extract text from PDF
+    async function extractTextFromPDF(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let text = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(item => item.str).join(' ') + '\n';
+      }
+      return text;
+    }
+
+    // Query OpenAI API (Chat Completions)
+    async function queryOpenAI(question, context, key) {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: "gpt-3.5-turbo",
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful assistant. Use the given PDF text to answer user questions precisely."
+            },
+            {
+              role: "user",
+              content: `Context:\n${context}\n\nQuestion: ${question}`
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error?.message || "OpenAI API error");
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content.trim();
+    }
+
+    // Handle PDF upload
+    document.getElementById("fileInput").addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (file) {
+        document.getElementById("answer").innerText = "Processing PDF...";
+        pdfText = await extractTextFromPDF(file);
+        document.getElementById("answer").innerText = "✅ PDF loaded. Now ask a question!";
+      }
+    });
+
+    // Handle asking question
+    document.getElementById("askBtn").addEventListener("click", async () => {
+      const question = document.getElementById("question").value;
+      if (!pdfText) {
+        alert("Please upload a PDF first.");
+        return;
+      }
+      if (!question.trim()) {
+        alert("Please enter a question.");
+        return;
+      }
+
+      document.getElementById("answer").innerText = "Thinking...";
+
+      try {
+        // 🔑 Replace with your real API key
+        const apiKey = "YOUR_OPENAI_API_KEY";
+
+        const answer = await queryOpenAI(question, pdfText, apiKey);
+        document.getElementById("answer").innerText = answer;
+      } catch (err) {
+        document.getElementById("answer").innerText = "Error: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
