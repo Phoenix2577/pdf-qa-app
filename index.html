@@ -1,25 +1,108 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="stylesheet" href="style.css">
+
   <meta charset="UTF-8">
   <title>PDF Q&A with OpenAI</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f7fb;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 40px;
+      margin: 0;
+    }
+
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      width: 600px;
+      max-width: 95%;
+    }
+
+    h2 {
+      margin-top: 0;
+      color: #333;
+      text-align: center;
+    }
+
+    input[type="file"] {
+      margin: 10px 0;
+      padding: 8px;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      margin-top: 15px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 80px;
+      transition: border-color 0.3s;
+    }
+    textarea:focus {
+      border-color: #4a90e2;
+      outline: none;
+    }
+
+    button {
+      background: #4a90e2;
+      color: white;
+      padding: 12px 18px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 15px;
+      margin-top: 15px;
+      transition: background 0.3s;
+      display: block;
+      width: 100%;
+    }
+    button:hover {
+      background: #357ABD;
+    }
+
+    h3 {
+      margin-top: 25px;
+      color: #444;
+    }
+
+    #answer {
+      white-space: pre-wrap;
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 10px;
+      margin-top: 10px;
+      background: #fafafa;
+      min-height: 50px;
+    }
+  </style>
 </head>
 <body>
-  <h2>Ask Questions from PDF</h2>
+  <div class="container">
+    <h2>📄 Ask Questions from PDF</h2>
 
-  <!-- File upload -->
-  <input type="file" id="fileInput" accept="application/pdf"><br><br>
+    <!-- File upload -->
+    <input type="file" id="fileInput" accept="application/pdf">
 
-  <!-- Question input -->
-  <textarea id="question" placeholder="Ask your question..." rows="3" cols="50"></textarea><br><br>
+    <!-- Question input -->
+    <textarea id="question" placeholder="Type your question here..."></textarea>
 
-  <!-- Submit -->
-  <button id="askBtn">Ask</button>
+    <!-- Submit -->
+    <button id="askBtn">Ask</button>
 
-  <!-- Answer output -->
-  <h3>Answer:</h3>
-  <div id="answer" style="white-space: pre-wrap; border:1px solid #ccc; padding:10px; width:500px;"></div>
+    <!-- Answer output -->
+    <h3>Answer:</h3>
+    <div id="answer"></div>
+  </div>
 
   <script>
     let pdfText = ''; // store extracted PDF text
@@ -75,7 +158,7 @@
     document.getElementById("fileInput").addEventListener("change", async (event) => {
       const file = event.target.files[0];
       if (file) {
-        document.getElementById("answer").innerText = "Processing PDF...";
+        document.getElementById("answer").innerText = "📚 Processing PDF...";
         pdfText = await extractTextFromPDF(file);
         document.getElementById("answer").innerText = "✅ PDF loaded. Now ask a question!";
       }
@@ -93,7 +176,7 @@
         return;
       }
 
-      document.getElementById("answer").innerText = "Thinking...";
+      document.getElementById("answer").innerText = "🤔 Thinking...";
 
       try {
         // 🔑 Replace with your real API key
@@ -102,7 +185,7 @@
         const answer = await queryOpenAI(question, pdfText, apiKey);
         document.getElementById("answer").innerText = answer;
       } catch (err) {
-        document.getElementById("answer").innerText = "Error: " + err.message;
+        document.getElementById("answer").innerText = "❌ Error: " + err.message;
       }
     });
   </script>
